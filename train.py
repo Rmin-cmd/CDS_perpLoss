@@ -25,7 +25,10 @@ def test_model(test_loader, net, current_iter, tracker, writer, logger, save_thi
     with torch.no_grad():
         for batch in tqdm.tqdm(iter(test_loader), dynamic_ncols=True):
             x, y = batch
-            loss, acc = loss_fn(net(x.cuda()), y.cuda())
+            pred, l_proto = net(x.cuda())
+            loss, acc = loss_fn(pred, y.cuda())
+            loss = loss + 0.01 * l_proto
+            # loss, acc = loss_fn(net(x.cuda()), y.cuda())
             test_losses.append(loss.item())
             test_acc.append(acc.item())
     mean_test_acc = np.sum(test_acc)/len(test_loader.dataset)
@@ -51,7 +54,10 @@ def val_model(val_loader, net, current_iter, tracker, writer, logger):
     with torch.no_grad():
         for idx, batch in tqdm.tqdm(enumerate(val_loader), dynamic_ncols=True):
             x, y = batch
-            loss, acc = loss_fn(net(x.cuda()), y.cuda())
+            pred, l_proto = net(x.cuda())
+            loss, acc = loss_fn(pred, y.cuda())
+            loss = loss + 0.01 * l_proto
+            # loss, acc = loss_fn(net(x.cuda()), y.cuda())
             val_losses.append(loss.item())
             val_acc.append(acc.item())
 
@@ -143,8 +149,10 @@ def main(args):
         else:
             x, y = ret
 
-        pred = net(x.cuda())
+        # pred = net(x.cuda())
+        pred, l_proto = net(x.cuda())
         loss, acc = loss_fn(pred, y.cuda())
+        loss = loss + 0.01 * l_proto
         loss.backward()
         optimizer.step()
 

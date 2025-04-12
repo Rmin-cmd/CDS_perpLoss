@@ -225,9 +225,9 @@ class CDS_E(nn.Module):
         x = self.bn(x)
 
         y = torch.sum(x, dim=2, keepdim=True)/np.sqrt(x.shape[2]*2)
-        x = self.dist_feat(x[..., 0, 0], y)
+        x, l = self.dist_feat(x[..., 0, 0], y)
 
-        return x
+        return x, l
 
 
 class CDS_MSTAR(nn.Module):

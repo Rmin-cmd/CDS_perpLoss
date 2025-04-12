@@ -109,9 +109,14 @@ class reflect_pad(nn.Module):
         to_return[..., -1, :] = to_return[..., -1, :] + to_return[..., -2, :]
         return to_return
 
+class GMM(nn.Module):
+    def __init__(self):
+        super(GMM, self).__init__()
+
+
 
 class MaxPoolMag(nn.Module):
-    """ 
+    """
     Performs magnitude max pooling
     Pools the input with largest magnitude over neighbors
     """
@@ -454,9 +459,39 @@ class DistFeatures(nn.Module):
         prototypes = th.rand(2, in_channels, num_prototypes)
         self.prototypes = nn.Parameter(data=prototypes, requires_grad=True)
         self.temp = nn.Parameter(data=th.tensor(1.0), requires_grad=True)
+        self.log_sigma = nn.Parameter(data=th.zeros([1, num_prototypes]))
 
     def __repr__(self):
         return 'DistFeats'
+
+    def gmm(self, distance_sq, pro_real, pro_imag, pred_real, pred_imag):
+
+        distance2 = distance_sq.sum(dim=1)
+
+        # Compute the unnormalized "likelihood" using a Gaussian kernel:
+        sigma = th.exp(self.log_sigma)
+        likelihoods = th.exp(-distance2 / (2 * sigma**2 + 1e-8))  # (batch, num_prototypes)
+
+        responsibilities = likelihoods / (likelihoods.sum(dim=1, keepdim=True) + 1e-8)  # shape: (batch, num_prototypes)
+
+        # Now, compute the new prototype estimates as a weighted average of the sample features.
+        # preds.complex has shape (batch, dist_features).
+        # We compute weighted sums along the batch dimension.
+        # Use Einstein summation: for each prototype k, new_proto[:, k] = sum_{i} responsibilities[i,k] * preds.complex[i,:] / sum_{i} responsibilities[i,k]
+        weighted_sum = th.einsum('bk,bd->kd', responsibilities+1j*th.zeros_like(responsibilities),
+                                 pred_real.squeeze() + 1j * pred_imag.squeeze())  # (num_prototypes, dist_features)
+        sum_resp = responsibilities.sum(dim=0).unsqueeze(1)  # (num_prototypes, 1)
+        new_prototypes = weighted_sum / (sum_resp + 1e-8)  # (num_prototypes, dist_features)
+        # Transpose to match our prototype shape: (dist_features, num_prototypes)
+        new_prototypes = new_prototypes.transpose(0, 1)
+        prototypes_cv = pro_real + 1j * pro_imag
+
+        # Define a prototype regularization loss that encourages current prototypes to be close to the updated values.
+        loss_proto = th.mean(th.abs(new_prototypes - prototypes_cv)**2)
+
+        return loss_proto
+
+
 
     def forward(self, x, y=None):
         """
@@ -475,12 +510,15 @@ class DistFeatures(nn.Module):
             real, imag = prototypes[None, 0, :, :], prototypes[None, 1, :, :]
         a, b = x[:, 0, :, None], x[:, 1, :, None]
 
-        dist = perpendicular_loss(real=real, imag=imag, a=a.squeeze(), b=b.squeeze())
+        # dist = perpendicular_loss(real=real, imag=imag, a=a.squeeze(), b=b.squeeze())
 
-        # dist_sq = (real-a)**2 + (imag-b)**2
-        # dist = th.sqrt(dist_sq.mean(dim=1))
+        dist_sq = (real-a)**2 + (imag-b)**2
+        dist = th.sqrt(dist_sq.mean(dim=1))
 
-        return -dist*self.temp
+        # add gmm layer
+        l_proto = self.gmm(dist_sq, real, imag, a, b)
+
+        return -dist*self.temp, l_proto
 
 
 class scaling_layer(nn.Module):
