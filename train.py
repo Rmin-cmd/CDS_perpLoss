@@ -15,6 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 LOG = logging.getLogger('base')
 coloredlogs.install(level='DEBUG', logger=LOG)
+s = 1.0
 
 
 def test_model(test_loader, net, current_iter, tracker, writer, logger, save_this_iter):
@@ -27,7 +28,7 @@ def test_model(test_loader, net, current_iter, tracker, writer, logger, save_thi
             x, y = batch
             pred, l_proto = net(x.cuda())
             loss, acc = loss_fn(pred, y.cuda())
-            loss = loss + 0.01 * l_proto
+            loss = loss + s * l_proto
             # loss, acc = loss_fn(net(x.cuda()), y.cuda())
             test_losses.append(loss.item())
             test_acc.append(acc.item())
@@ -56,7 +57,7 @@ def val_model(val_loader, net, current_iter, tracker, writer, logger):
             x, y = batch
             pred, l_proto = net(x.cuda())
             loss, acc = loss_fn(pred, y.cuda())
-            loss = loss + l_proto
+            loss = loss + s * l_proto
             # loss, acc = loss_fn(net(x.cuda()), y.cuda())
             val_losses.append(loss.item())
             val_acc.append(acc.item())
@@ -152,7 +153,7 @@ def main(args):
         # pred = net(x.cuda())
         pred, l_proto = net(x.cuda())
         loss, acc = loss_fn(pred, y.cuda())
-        loss = loss + l_proto
+        loss = loss + s * l_proto
         loss.backward()
         optimizer.step()
 
