@@ -164,7 +164,7 @@ class CDS_I(nn.Module):
         x = self.bn(x.reshape(x.shape[0], -1)).reshape(x_shape)
         x, l = self.dist_feat(x[..., 0, 0])
 
-        return x
+        return x, l
 
 
 class CDS_E(nn.Module):
