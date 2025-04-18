@@ -162,7 +162,7 @@ class CDS_I(nn.Module):
         x = self.fc1(x)
         x_shape = x.shape
         x = self.bn(x.reshape(x.shape[0], -1)).reshape(x_shape)
-        x = self.dist_feat(x[..., 0, 0])
+        x, l = self.dist_feat(x[..., 0, 0])
 
         return x
 
