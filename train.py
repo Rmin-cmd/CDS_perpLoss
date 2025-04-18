@@ -56,7 +56,7 @@ def val_model(val_loader, net, current_iter, tracker, writer, logger):
             x, y = batch
             pred, l_proto = net(x.cuda())
             loss, acc = loss_fn(pred, y.cuda())
-            loss = loss + 0.01 * l_proto
+            loss = loss + l_proto
             # loss, acc = loss_fn(net(x.cuda()), y.cuda())
             val_losses.append(loss.item())
             val_acc.append(acc.item())
@@ -152,7 +152,7 @@ def main(args):
         # pred = net(x.cuda())
         pred, l_proto = net(x.cuda())
         loss, acc = loss_fn(pred, y.cuda())
-        loss = loss + 0.01 * l_proto
+        loss = loss + l_proto
         loss.backward()
         optimizer.step()
 
