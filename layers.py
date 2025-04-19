@@ -478,7 +478,9 @@ class DistFeatures(nn.Module):
         # preds.complex has shape (batch, dist_features).
         # We compute weighted sums along the batch dimension.
         # Use Einstein summation: for each prototype k, new_proto[:, k] = sum_{i} responsibilities[i,k] * preds.complex[i,:] / sum_{i} responsibilities[i,k]
-        weighted_sum = th.einsum('bk,bd->kd', responsibilities+1j*th.zeros_like(responsibilities),
+        # weighted_sum = th.einsum('bk,bd->kd', responsibilities+1j*th.zeros_like(responsibilities),
+        #                          pred_real.squeeze() + 1j * pred_imag.squeeze())  # (num_prototypes, dist_features)
+        weighted_sum = th.einsum('bk,bd->kd', responsibilities+1j*responsibilities,
                                  pred_real.squeeze() + 1j * pred_imag.squeeze())  # (num_prototypes, dist_features)
         sum_resp = responsibilities.sum(dim=0).unsqueeze(1)  # (num_prototypes, 1)
         new_prototypes = weighted_sum / (sum_resp + 1e-8)  # (num_prototypes, dist_features)
