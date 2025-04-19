@@ -15,7 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 LOG = logging.getLogger('base')
 coloredlogs.install(level='DEBUG', logger=LOG)
-s = 1.0
+s = 0.01
 
 
 def test_model(test_loader, net, current_iter, tracker, writer, logger, save_this_iter):
