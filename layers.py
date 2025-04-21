@@ -533,8 +533,8 @@ class DistFeatures(nn.Module):
         # add gmm layer
         l_proto = self.gmm(dist_sq, real, imag, a, b)
 
-        # return -dist*self.temp, l_proto
-        return -dist.mean(dim=1)*self.temp, l_proto
+        return -dist*self.temp, l_proto
+        # return -dist.mean(dim=1)*self.temp, l_proto
 
 
 class scaling_layer(nn.Module):
