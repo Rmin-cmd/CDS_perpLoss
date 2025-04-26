@@ -202,11 +202,13 @@ class CDS_E(nn.Module):
         df_conv = conv(prototype_size, prototype_size, kern_size=1, groups=16,
                        new_init=True, use_groups_init=True)
 
-        self.dist_feat = layers.DistFeatures(prototype_size, outsize)
+        # self.dist_feat = layers.DistFeatures(prototype_size, outsize)
+
+        self.imp = layers.infinite_mixture_prototype()
 
         self.bn = layers.VNCBN(prototype_size)
 
-    def forward(self, x):
+    def forward(self, x, y=None, train_flag=False):
         # Convert complex input into a real-imaginary input
         x = torch.stack([x.real, x.imag], dim=1)
         x = self.wfm1(x)
@@ -224,10 +226,13 @@ class CDS_E(nn.Module):
 
         x = self.bn(x)
 
-        y = torch.sum(x, dim=2, keepdim=True)/np.sqrt(x.shape[2]*2)
-        x, l = self.dist_feat(x[..., 0, 0], y)
+        # y = torch.sum(x, dim=2, keepdim=True)/np.sqrt(x.shape[2]*2)
+        # x, l = self.dist_feat(x[..., 0, 0], y)
 
-        return x, l
+        loss, acc = self.imp(x[None, ..., 0, 0], y.unsqueeze(0), train_flag)
+
+        # return x, l
+        return loss, acc
 
 
 class CDS_MSTAR(nn.Module):

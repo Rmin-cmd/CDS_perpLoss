@@ -55,9 +55,10 @@ def val_model(val_loader, net, current_iter, tracker, writer, logger):
     with torch.no_grad():
         for idx, batch in tqdm.tqdm(enumerate(val_loader), dynamic_ncols=True):
             x, y = batch
-            pred, l_proto = net(x.cuda())
-            loss, acc = loss_fn(pred, y.cuda())
-            loss = loss + s * l_proto
+            # pred, l_proto = net(x.cuda())
+            # loss, acc = loss_fn(pred, y.cuda())
+            # loss = loss + s * l_proto
+            loss, acc = net(x.cuda(), y.cuda(), train_flag=False)
             # loss, acc = loss_fn(net(x.cuda()), y.cuda())
             val_losses.append(loss.item())
             val_acc.append(acc.item())
@@ -151,9 +152,10 @@ def main(args):
             x, y = ret
 
         # pred = net(x.cuda())
-        pred, l_proto = net(x.cuda())
-        loss, acc = loss_fn(pred, y.cuda())
-        loss = loss + s * l_proto
+        loss, acc = net(x.cuda(), y.cuda(), train_flag=True)
+        # pred, l_proto = net(x.cuda())
+        # loss, acc = loss_fn(pred, y.cuda())
+        # loss = loss + s * l_proto
         loss.backward()
         optimizer.step()
 

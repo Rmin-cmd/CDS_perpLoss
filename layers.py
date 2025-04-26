@@ -2,12 +2,49 @@ import torch as th
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
+from utils_imp import *
+from weighted_ce_loss import *
+import torch
+from typing import Union, Tuple
 
 # th.use_deterministic_algorithms(True)
 
 
 def absolute(real, imag):
     return th.sqrt(real **2 + imag**2)
+
+def complexVar(real: torch.Tensor,
+                imag: torch.Tensor,
+                dim: Union[int, Tuple[int, ...]] = None,
+                keepdim: bool = False) -> torch.Tensor:
+        """
+        Compute the population variance of a complex-valued tensor given
+        separate real and imaginary parts along specified dimension(s).
+
+        Variances defined by:
+            Var(Z) = E[|Z - E[Z]|^2]
+                   = E[(a - μₐ)^2 + (b - μ_b)^2]
+
+        Args:
+            real     (torch.Tensor): Real-part tensor.
+            imag     (torch.Tensor): Imag-part tensor (same shape as real).
+            dim       (int or tuple): Dimension(s) along which to reduce.
+            keepdim  (bool): Whether to retain reduced dimensions.
+
+        Returns:
+            torch.Tensor: Real-valued variance, reduced over `dim`.
+        """
+        # 1) Compute means for real and imaginary parts
+        mean_real = real.mean(dim=dim, keepdim=True)
+        mean_imag = imag.mean(dim=dim, keepdim=True)
+
+        # 2) Compute squared deviations and sum
+        sq_dev = (real - mean_real) ** 2 + (imag - mean_imag) ** 2
+
+        # 3) Average over specified dimensions
+        var = sq_dev.mean(dim=dim, keepdim=keepdim)
+        return var
 
 
 def Cmul(x, y):
@@ -538,6 +575,259 @@ class DistFeatures(nn.Module):
 
         # return -dist*self.temp, l_proto
         return -dist.mean(dim=1)*self.temp, l_proto
+
+
+class infinite_mixture_prototype(nn.Module):
+    def __init__(self):
+        super(infinite_mixture_prototype, self).__init__()
+
+        learn_sigma_l = 5.0
+        #
+        # self.in_channels = in_channels
+        # self.num_prototypes = num_prototypes
+
+        log_sigma_l = th.log(th.FloatTensor([learn_sigma_l]))
+
+        if learn_sigma_l:
+            self.log_sigma_l = nn.Parameter(log_sigma_l, requires_grad=True)
+        else:
+            self.log_sigma_l = Variable(log_sigma_l, requires_grad=True).cuda()
+
+        hid_dim, z_dim = 64, 64
+
+    def _add_cluster(self, nClusters, protos, radii, cluster_type='unlabeled', ex=None):
+        """
+        Args:
+            nClusters: number of clusters
+            protos: [B, nClusters, D] cluster protos
+            radii: [B, nClusters] cluster radius,
+            cluster_type: ['labeled','unlabeled'], the type of cluster we're adding
+            ex: the example to add
+        Returns:
+            updated arguments
+        """
+        nClusters += 1
+        bsize = protos.size()[0]
+        dimension = protos.size()[2]
+
+        zero_count = Variable(th.zeros(bsize, 1)).cuda()
+
+        d_radii = Variable(th.ones(bsize, 1), requires_grad=False).cuda()
+
+        if cluster_type == 'labeled':
+            d_radii = d_radii * th.exp(self.log_sigma_l)
+        else:
+            d_radii = d_radii * th.exp(self.log_sigma_u)
+
+        if ex is None:
+            new_proto = self.base_distribution.data.cuda()
+        else:
+            # new_proto = ex.unsqueeze(0).unsqueeze(0).cuda()
+            new_proto = ex.unsqueeze(0).unsqueeze(2).cuda()
+
+        # protos = th.cat([protos, new_proto], dim=1)
+        protos = th.cat([protos, new_proto], dim=2)
+        radii = th.cat([radii, d_radii], dim=1)
+        return nClusters, protos, radii
+
+    def estimate_lambda(self, tensor_proto, semi_supervised):
+        # estimate lambda by mean of shared sigmas
+        # rho = tensor_proto[0].var(dim=0)
+        rho = complexVar(tensor_proto[0, 0, ...], tensor_proto[0, 0, ...], dim=0)
+        # rho = tensor_proto[0].var(dim=1)
+        rho = rho.mean()
+
+        if semi_supervised:
+            sigma = (th.exp(self.log_sigma_l).data[0] + th.exp(self.log_sigma_u).data[0]) / 2.
+        else:
+            sigma = th.exp(self.log_sigma_l).data[0]
+
+        alpha = 0.01
+        lamda = -2 * sigma.cpu().numpy() * np.log(alpha) + sigma.cpu().numpy() * np.log(
+            1 + rho.cpu().numpy() / sigma.cpu().numpy())
+
+        return np.abs(lamda)
+
+    def _compute_protos(self, h, probs):
+        """Compute the prototypes
+        Args:
+            h: [B, N, D] encoded inputs
+            probs: [B, N, nClusters] soft assignment
+        Returns:
+            cluster protos: [B, nClusters, D]
+        """
+
+        h = torch.unsqueeze(h, 2)       # [B, N, 1, D]
+        probs = torch.unsqueeze(probs, 3)       # [B, N, nClusters, 1]
+        prob_sum = torch.sum(probs, 1)  # [B, nClusters, 1]
+        zero_indices = (prob_sum.view(-1) == 0).nonzero()
+        if torch.numel(zero_indices) != 0:
+            values = torch.masked_select(torch.ones_like(prob_sum), torch.eq(prob_sum, 0.0))
+            prob_sum = prob_sum.put_(zero_indices, values)
+        protos = torch.einsum('ijkmn, ijpq->ijmpn', h, probs)
+        # protos = h*probs    # [B, N, nClusters, D]
+        # protos = torch.sum(protos, 1)/prob_sum
+        protos = torch.sum(protos, 1)/prob_sum.unsqueeze(1)
+        return protos
+
+    def _compute_distances_complex(self, protos, example):
+        dist = torch.sum((example[0] - protos[:, 0, ...])**2 + (example[1] - protos[:, 1, ...])**2, dim=2)
+        # dist = torch.sum((example - protos)**2, dim=2)
+        return dist
+
+    def delete_empty_clusters(self, tensor_proto, prob, radii, targets, eps=1e-3):
+        column_sums = th.sum(prob[0], dim=0).data
+        good_protos = column_sums > eps
+        idxs = th.nonzero(good_protos).squeeze()
+        return tensor_proto[:, :, idxs, :], radii[:, idxs], targets[idxs]
+
+    def loss(self, logits, targets, labels):
+        """Loss function to "or" across the prototypes in the class:
+        take the loss for the closest prototype in the class and all negatives.
+        inputs:
+            logits [B, N, nClusters] of nll probs for each cluster
+            targets [B, N] of target clusters
+        outputs:
+            weighted cross entropy such that we have an "or" function
+            across prototypes in the class of each query
+        """
+        targets = targets.cuda()
+        # determine index of closest in-class prototype for each query
+        target_logits = th.ones_like(logits.data) * float('-Inf')
+        target_logits[targets] = logits.data[targets]
+        _, best_targets = th.max(target_logits, dim=1)
+        # mask out everything...
+        weights = th.zeros_like(logits.data)
+        # ...then include the closest prototype in each class and unlabeled)
+        unique_labels = np.unique(labels.cpu().numpy())
+        for l in unique_labels:
+            class_mask = labels == l
+            class_logits = th.ones_like(logits.data) * float('-Inf')
+            # batch_idx = torch.arange(class_logits.size(0))
+            row, col = class_mask.repeat(logits.size(0), 1).nonzero(as_tuple=True)
+            class_logits[row, col] = logits[row, col]
+            # class_logits[class_mask.repeat(logits.size(0), 1)] = logits[class_mask].data.view(logits.size(0), -1).squeeze(1)
+            _, best_in_class = th.max(class_logits, dim=1)
+            weights[range(0, targets.size(0)), best_in_class] = 1.
+        loss = weighted_loss(logits, Variable(best_targets), Variable(weights))
+        return loss.mean()
+
+    def forward(self, x, y, train_flag=True):
+
+        # batch = self._process_batch(sample, super_classes=super_classes)
+        if train_flag:
+            self.nClusters = len(np.unique(y.data.cpu().numpy()))
+            self.nInitialClusters = self.nClusters
+
+            # run data through network
+            # h_train = self._run_forward(x)
+            # create probabilities for points
+            _, idx = np.unique(y.squeeze().data.cpu().numpy(), return_inverse=True)
+            prob_train = one_hot(y, self.nClusters).cuda()
+
+            # make initial radii for labeled clusters
+            bsize = x.size()[0]
+            self.radii = Variable(th.ones(bsize, self.nClusters)).cuda() * th.exp(self.log_sigma_l)
+
+            self.support_labels = th.arange(0, self.nClusters).cuda().long()
+
+            # compute initial prototypes from labeled examples
+            self.protos = self._compute_protos(x, prob_train)
+
+            # estimate lamda
+            lamda = self.estimate_lambda(self.protos.data, False)
+
+            tensor_proto = self.protos.data
+            # iterate over labeled examples to reassign first
+            for i, ex in enumerate(x[0]):
+                idxs = th.nonzero(y.data[0, i] == self.support_labels)[0]
+                # distances = self._compute_distances(tensor_proto[:, idxs, :], ex.data)
+                distances = self._compute_distances_complex(tensor_proto[:, :, idxs, :], ex.data)
+                if (th.min(distances) > lamda):
+                    self.nClusters, tensor_proto, self.radii = self._add_cluster(self.nClusters, tensor_proto, self.radii,
+                                                                       cluster_type='labeled', ex=ex.data)
+                    # self.support_labels = th.cat([self.support_labels, y[0, i].data], dim=0)
+                    self.support_labels = th.cat([self.support_labels, y[0, i].reshape([1])], dim=0)
+
+            # perform partial reassignment based on newly created labeled clusters
+            if self.nClusters > self.nInitialClusters:
+                support_targets = y.data[0, :, None] == self.support_labels
+                prob_train = assign_cluster_radii_limited(Variable(tensor_proto), x, self.radii, support_targets)
+
+            self.protos = Variable(tensor_proto).cuda()
+            self.protos = self._compute_protos(x, Variable(prob_train.data, requires_grad=False).cuda())
+            self.protos, self.radii, self.support_labels = self.delete_empty_clusters(self.protos, prob_train,
+                                                                            self.radii, self.support_labels)
+
+            logits = compute_logits_radii(self.protos, x, self.radii).squeeze()
+
+            labels = y.data
+            labels[labels >= self.nInitialClusters] = -1
+
+            support_targets = labels[0, :, None] == self.support_labels
+            loss = self.loss(logits, support_targets, self.support_labels)
+
+            # map support predictions back into classes to check accuracy
+            _, support_preds = th.max(logits.data, dim=1)
+            y_pred = self.support_labels[support_preds]
+
+            # acc_val = th.eq(y_pred, labels[0]).float().mean()
+            acc_val = th.eq(y_pred, labels[0]).float().sum()
+
+        else:
+
+            # h_test = self._run_forward(x)
+
+            logits = compute_logits_radii(self.protos, x, self.radii).squeeze()
+
+            labels = y.data
+            labels[labels >= self.nInitialClusters] = -1
+
+            support_targets = labels[0, :, None] == self.support_labels
+            loss = self.loss(logits, support_targets, self.support_labels)
+
+            # map support predictions back into classes to check accuracy
+            _, support_preds = th.max(logits.data, dim=1)
+            y_pred = self.support_labels[support_preds]
+
+            acc_val = th.eq(y_pred, labels[0]).float().sum()
+
+        return loss, acc_val
+
+            # # iterate over unlabeled examples
+            # if batch.x_unlabel is not None:
+            #     h_unlabel = self._run_forward(batch.x_unlabel)
+            #     h_all = th.cat([h_train, h_unlabel], dim=1)
+            #     unlabeled_flag = th.LongTensor([-1]).cuda()
+            #
+            #     for i, ex in enumerate(h_unlabel[0]):
+            #         distances = self._compute_distances(tensor_proto, ex.data)
+            #         if th.min(distances) > lamda:
+            #             nClusters, tensor_proto, radii = self._add_cluster(nClusters, tensor_proto, radii,
+            #                                                                cluster_type='unlabeled', ex=ex.data)
+            #             support_labels = th.cat([support_labels, unlabeled_flag], dim=0)
+            #
+            #     # add new, unlabeled clusters to the total probability
+            #     if nClusters > nTrainClusters:
+            #         unlabeled_clusters = th.zeros(prob_train.size(0), prob_train.size(1), nClusters - nTrainClusters)
+            #         prob_train = th.cat([prob_train, Variable(unlabeled_clusters).cuda()], dim=2)
+            #
+            #     prob_unlabel = assign_cluster_radii(Variable(tensor_proto).cuda(), h_unlabel, radii)
+            #     prob_unlabel_nograd = Variable(prob_unlabel.data, requires_grad=False).cuda()
+            #     prob_all = th.cat([Variable(prob_train.data, requires_grad=False), prob_unlabel_nograd], dim=1)
+            #
+            #     protos = self._compute_protos(h_all, prob_all)
+            #     protos, radii, support_labels = self.delete_empty_clusters(protos, prob_all, radii, support_labels)
+            # else:
+        # logits = compute_logits_radii(protos, h_test, radii)
+
+        # convert class targets into indicators for supports in each class
+
+        # return loss, {
+        #     'loss': loss.item(),
+        #     'acc': acc_val,
+        #     'logits': logits.data
+        # }
 
 
 class scaling_layer(nn.Module):
