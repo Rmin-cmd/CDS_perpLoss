@@ -26,10 +26,11 @@ def test_model(test_loader, net, current_iter, tracker, writer, logger, save_thi
     with torch.no_grad():
         for batch in tqdm.tqdm(iter(test_loader), dynamic_ncols=True):
             x, y = batch
-            pred, l_proto = net(x.cuda())
-            loss, acc = loss_fn(pred, y.cuda())
-            loss = loss + s * l_proto
+            # pred, l_proto = net(x.cuda())
+            # loss, acc = loss_fn(pred, y.cuda())
+            # loss = loss + s * l_proto
             # loss, acc = loss_fn(net(x.cuda()), y.cuda())
+            loss, acc = net(x.cuda(), y.cuda(), train_flag=False)
             test_losses.append(loss.item())
             test_acc.append(acc.item())
     mean_test_acc = np.sum(test_acc)/len(test_loader.dataset)
