@@ -693,23 +693,28 @@ class infinite_mixture_prototype(nn.Module):
         """
         targets = targets.cuda()
         # determine index of closest in-class prototype for each query
-        target_logits = th.ones_like(logits.data) * float('-Inf')
-        target_logits[targets] = logits.data[targets]
+        # target_logits = th.ones_like(logits.data) * float('-Inf')
+        target_logits = th.ones_like(logits) * float('-Inf')
+        # target_logits[targets] = logits.data[targets]
+        target_logits[targets] = logits[targets]
         _, best_targets = th.max(target_logits, dim=1)
         # mask out everything...
-        weights = th.zeros_like(logits.data)
+        # weights = th.zeros_like(logits.data)
+        weights = th.zeros_like(logits)
         # ...then include the closest prototype in each class and unlabeled)
         unique_labels = np.unique(labels.cpu().numpy())
         for l in unique_labels:
             class_mask = labels == l
-            class_logits = th.ones_like(logits.data) * float('-Inf')
+            # class_logits = th.ones_like(logits.data) * float('-Inf')
+            class_logits = th.ones_like(logits) * float('-Inf')
             # batch_idx = torch.arange(class_logits.size(0))
             row, col = class_mask.repeat(logits.size(0), 1).nonzero(as_tuple=True)
             class_logits[row, col] = logits[row, col]
             # class_logits[class_mask.repeat(logits.size(0), 1)] = logits[class_mask].data.view(logits.size(0), -1).squeeze(1)
             _, best_in_class = th.max(class_logits, dim=1)
             weights[range(0, targets.size(0)), best_in_class] = 1.
-        loss = weighted_loss(logits, Variable(best_targets), Variable(weights))
+        # loss = weighted_loss(logits, Variable(best_targets), Variable(weights))
+        loss = weighted_loss(logits, best_targets, weights)
         return loss.mean()
 
     def forward(self, x, y, train_flag=True):
@@ -737,24 +742,30 @@ class infinite_mixture_prototype(nn.Module):
             self.protos = self._compute_protos(x, prob_train)
 
             # estimate lamda
-            lamda = self.estimate_lambda(self.protos.data, False)
+            # lamda = self.estimate_lambda(self.protos.data, False)
+            lamda = self.estimate_lambda(self.protos, False)
 
-            tensor_proto = self.protos.data
+            # tensor_proto = self.protos.data
+            tensor_proto = self.protos
             # iterate over labeled examples to reassign first
             for i, ex in enumerate(x[0]):
                 idxs = th.nonzero(y.data[0, i] == self.support_labels)[0]
                 # distances = self._compute_distances(tensor_proto[:, idxs, :], ex.data)
                 distances = self._compute_distances_complex(tensor_proto[:, :, idxs, :], ex.data)
                 if (th.min(distances) > lamda):
+                    # self.nClusters, tensor_proto, self.radii = self._add_cluster(self.nClusters, tensor_proto, self.radii,
+                    #                                                    cluster_type='labeled', ex=ex.data)
                     self.nClusters, tensor_proto, self.radii = self._add_cluster(self.nClusters, tensor_proto, self.radii,
-                                                                       cluster_type='labeled', ex=ex.data)
+                                                                       cluster_type='labeled', ex=ex)
                     # self.support_labels = th.cat([self.support_labels, y[0, i].data], dim=0)
                     self.support_labels = th.cat([self.support_labels, y[0, i].reshape([1])], dim=0)
 
             # perform partial reassignment based on newly created labeled clusters
             if self.nClusters > self.nInitialClusters:
-                support_targets = y.data[0, :, None] == self.support_labels
-                prob_train = assign_cluster_radii_limited(Variable(tensor_proto), x, self.radii, support_targets)
+                # support_targets = y.data[0, :, None] == self.support_labels
+                support_targets = y[0, :, None] == self.support_labels
+                # prob_train = assign_cluster_radii_limited(Variable(tensor_proto), x, self.radii, support_targets)
+                prob_train = assign_cluster_radii_limited(tensor_proto, x, self.radii, support_targets)
 
             self.protos = Variable(tensor_proto).cuda()
             self.protos = self._compute_protos(x, Variable(prob_train.data, requires_grad=False).cuda())
@@ -763,7 +774,8 @@ class infinite_mixture_prototype(nn.Module):
 
             logits = compute_logits_radii(self.protos, x, self.radii).squeeze()
 
-            labels = y.data
+            # labels = y.data
+            labels = y
             labels[labels >= self.nInitialClusters] = -1
 
             support_targets = labels[0, :, None] == self.support_labels
@@ -782,7 +794,8 @@ class infinite_mixture_prototype(nn.Module):
 
             logits = compute_logits_radii(self.protos, x, self.radii).squeeze()
 
-            labels = y.data
+            # labels = y.data
+            labels = y
             labels[labels >= self.nInitialClusters] = -1
 
             support_targets = labels[0, :, None] == self.support_labels
