@@ -581,7 +581,7 @@ class infinite_mixture_prototype(nn.Module):
     def __init__(self):
         super(infinite_mixture_prototype, self).__init__()
 
-        learn_sigma_l = 5.0
+        learn_sigma_l = 1.0
         #
         # self.in_channels = in_channels
         # self.num_prototypes = num_prototypes
@@ -713,6 +713,8 @@ class infinite_mixture_prototype(nn.Module):
         return loss.mean()
 
     def forward(self, x, y, train_flag=True):
+
+        y, _ = y.sort()
 
         # batch = self._process_batch(sample, super_classes=super_classes)
         if train_flag:

@@ -33,8 +33,10 @@ def test_model(test_loader, net, current_iter, tracker, writer, logger, save_thi
             loss, acc = net(x.cuda(), y.cuda(), train_flag=False)
             test_losses.append(loss.item())
             test_acc.append(acc.item())
-    mean_test_acc = np.sum(test_acc)/len(test_loader.dataset)
-    mean_test_loss = np.sum(test_losses)/len(test_loader.dataset)
+    # mean_test_acc = np.sum(test_acc)/len(test_loader.dataset)
+    mean_test_acc = np.sum(test_acc)/len(test_acc)
+    # mean_test_loss = np.sum(test_losses)/len(test_loader.dataset)
+    mean_test_loss = np.sum(test_losses)/len(test_losses)
 
     writer.add_scalar('Test Loss', mean_test_loss, current_iter)
     writer.add_scalar('Test Acc', mean_test_acc, current_iter)
@@ -64,8 +66,10 @@ def val_model(val_loader, net, current_iter, tracker, writer, logger):
             val_losses.append(loss.item())
             val_acc.append(acc.item())
 
-    mean_val_acc = np.sum(val_acc)/len(val_loader.dataset)
-    mean_val_loss = np.sum(val_losses)/len(val_loader.dataset)
+    # mean_val_acc = np.sum(val_acc)/len(val_loader.dataset)
+    mean_val_acc = np.sum(val_acc)/len(val_acc)
+    mean_val_loss = np.sum(val_losses)/len(val_losses)
+    # mean_val_loss = np.sum(val_losses)/len(val_loader.dataset)
     writer.add_scalar('Validation Loss', mean_val_loss, current_iter)
     writer.add_scalar('Validation Acc', mean_val_acc, current_iter)
     logger.info("Finished Validation! Mean Loss: {}, Acc: {}".format(
