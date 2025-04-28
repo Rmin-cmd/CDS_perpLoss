@@ -644,7 +644,7 @@ class infinite_mixture_prototype(nn.Module):
 
         alpha = 0.01
         lamda = -2 * sigma.cpu().numpy() * np.log(alpha) + sigma.cpu().numpy() * np.log(
-            1 + rho.cpu().numpy() / sigma.cpu().numpy())
+            1 + rho.detach().cpu().numpy() / sigma.cpu().numpy())
 
         return np.abs(lamda)
 
