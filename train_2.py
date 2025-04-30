@@ -132,8 +132,6 @@ def main(args):
     save_this_iter = False
 
     train_iter = iter(train_loader)
-    ##
-    test_iter = iter(val_loader)
     LOG.info("train_iter_size " + str(len(train_iter)))
     LOG.info("testloader " + str(test_loader))
 
