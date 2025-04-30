@@ -483,17 +483,20 @@ class InfiniteMixturePrototype(nn.Module):
     @torch.no_grad()
     def dp_means_clustering(self, train_loader):
 
-        self.all_embs, self.all_lbls = [], []
+        all_embs, all_lbls = [], []
         self.encoder.eval()
 
         for x,y in train_loader:
             z = self.encoder(x.cuda())
-            self.all_embs.append(z.cpu())
-            self.all_lbls.append(y)
+            all_embs.append(z.detach().cpu())
+            all_lbls.append(y)
 
 
-        self.all_embs = torch.cat(self.all_embs, dim=1).cuda()
-        self.all_lbls = torch.cat(self.all_lbls, dim=0).unsqueeze(0).cuda()
+        all_embs = torch.cat(all_embs, dim=1)
+        all_lbls = torch.cat(all_lbls, dim=0)
+
+        self.all_embs = all_embs.cuda()
+        self.all_lbls = all_lbls.unsqueeze(0).cuda()
 
         self.nClusters = len(np.unique(self.all_lbls.data.cpu().numpy()))
         self.nInitialClusters = self.nClusters
