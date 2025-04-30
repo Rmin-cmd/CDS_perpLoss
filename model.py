@@ -199,40 +199,63 @@ class CDS_E(nn.Module):
 
         self.fc1 = conv(64, prototype_size, 1, groups=4, new_init=True)
 
-        df_conv = conv(prototype_size, prototype_size, kern_size=1, groups=16,
-                       new_init=True, use_groups_init=True)
+        # df_conv = conv(prototype_size, prototype_size, kern_size=1, groups=16,
+        #                new_init=True, use_groups_init=True)
 
         # self.dist_feat = layers.DistFeatures(prototype_size, outsize)
 
-        self.imp = layers.infinite_mixture_prototype()
+        # self.imp = layers.infinite_mixture_prototype()
 
         self.bn = layers.VNCBN(prototype_size)
 
-    def forward(self, x, y=None, train_flag=False):
+    def forward(self, x, x_val=None, y=None, y_val=None, train_flag=False):
         # Convert complex input into a real-imaginary input
         x = torch.stack([x.real, x.imag], dim=1)
+        # x_val = torch.stack([x_val.real, x_val.imag], dim=1)
+
         x = self.wfm1(x)
+        # x_val = self.wfm1(x_val)
+
         x = self.s1(x)
+        # x_val = self.s1(x_val)
+
         x = self.t1(x)
+        # x_val = self.t1(x_val)
+
         x = self.wfm2(x)
+        # x_val = self.wfm2(x_val)
+
         x = self.s2(x)
+        # x_val = self.s2(x_val)
+
         x = self.t2(x)
+        # x_val = self.t2(x_val)
+
         x = self.wfm3(x)
+        # x_val = self.wfm3(x_val)
+
         x = self.s3(x)
+        # x_val = self.s3(x_val)
+
         x = self.t3(x)
+        # x_val = self.t3(x_val)
+
         x = self.wfm4(x)
+        # x_val = self.wfm4(x_val)
 
         x = self.fc1(x)
+        # x_val = self.fc1(x_val)
 
         x = self.bn(x)
+        # x_val = self.bn(x_val)
 
         # y = torch.sum(x, dim=2, keepdim=True)/np.sqrt(x.shape[2]*2)
         # x, l = self.dist_feat(x[..., 0, 0], y)
 
-        loss, acc = self.imp(x[None, ..., 0, 0], y.unsqueeze(0), train_flag)
+        # loss, acc = self.imp(x[None, ..., 0, 0], y.unsqueeze(0), x_val[None, ..., 0, 0], y_val.unsqueeze(0), train_flag)
 
         # return x, l
-        return loss, acc
+        return x[None, ..., 0, 0]
 
 
 class CDS_MSTAR(nn.Module):

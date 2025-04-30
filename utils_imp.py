@@ -234,7 +234,7 @@ def compute_logits_radii(cluster_centers, data, radii, prior_weight=1.):
     dim = data.size()[-1]
     radii = torch.unsqueeze(radii, 1)  # [B, 1, K]
     # neg_dist = -torch.sum((data - cluster_centers)**2, dim=3)   # [B, N, K]
-    neg_dist = -torch.sum((data[..., 0, :, :] - cluster_centers[0, 0])**2 + (data[..., 0, :, :] - cluster_centers[0, 1])**2, dim=3)   # [B, N, K]
+    neg_dist = -torch.sum((data[..., 0, :, :] - cluster_centers[0, 0])**2 + (data[..., 1, :, :] - cluster_centers[0, 1])**2, dim=3)   # [B, N, K]
 
     logits = neg_dist / 2.0 / (radii)
     norm_constant = 0.5*dim*(torch.log(radii) + np.log(2*np.pi))

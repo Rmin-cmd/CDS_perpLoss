@@ -8,6 +8,7 @@ from weighted_ce_loss import *
 import torch
 from typing import Union, Tuple
 
+
 # th.use_deterministic_algorithms(True)
 
 
@@ -571,10 +572,10 @@ class DistFeatures(nn.Module):
         dist = th.sqrt(dist_sq.mean(dim=2))
 
         # add gmm layer
-        l_proto = self.gmm(dist_sq, real, imag, a, b)
+        # l_proto = self.gmm(dist_sq, real, imag, a, b)
 
-        # return -dist*self.temp, l_proto
-        return -dist.mean(dim=1)*self.temp, l_proto
+        return -dist.mean(dim=1)*self.temp
+        # return -dist.mean(dim=1)*self.temp, l_proto
 
 
 class infinite_mixture_prototype(nn.Module):
@@ -633,7 +634,7 @@ class infinite_mixture_prototype(nn.Module):
     def estimate_lambda(self, tensor_proto, semi_supervised):
         # estimate lambda by mean of shared sigmas
         # rho = tensor_proto[0].var(dim=0)
-        rho = complexVar(tensor_proto[0, 0, ...], tensor_proto[0, 0, ...], dim=0)
+        rho = complexVar(tensor_proto[0, 0, ...], tensor_proto[0, 1, ...], dim=0)
         # rho = tensor_proto[0].var(dim=1)
         rho = rho.mean()
 
@@ -664,7 +665,10 @@ class infinite_mixture_prototype(nn.Module):
         if torch.numel(zero_indices) != 0:
             values = torch.masked_select(torch.ones_like(prob_sum), torch.eq(prob_sum, 0.0))
             prob_sum = prob_sum.put_(zero_indices, values)
-        protos = torch.einsum('ijkmn, ijpq->ijmpn', h, probs)
+        # protos = torch.einsum('ijkmn, ijpq->ijmpn', h, probs)
+        protos_real = h[:, :, :, 0, :] * probs
+        protos_imag = h[:, :, :, 1, :] * probs
+        protos = torch.stack([protos_real, protos_imag], dim=2)
         # protos = h*probs    # [B, N, nClusters, D]
         # protos = torch.sum(protos, 1)/prob_sum
         protos = torch.sum(protos, 1)/prob_sum.unsqueeze(1)
@@ -717,7 +721,7 @@ class infinite_mixture_prototype(nn.Module):
         loss = weighted_loss(logits, best_targets, weights)
         return loss.mean()
 
-    def forward(self, x, y, train_flag=True):
+    def forward(self, x, y, x_val=None, y_val=None, train_flag=True):
 
         y, _ = y.sort()
 
@@ -772,6 +776,8 @@ class infinite_mixture_prototype(nn.Module):
             self.protos, self.radii, self.support_labels = self.delete_empty_clusters(self.protos, prob_train,
                                                                             self.radii, self.support_labels)
 
+            ###
+
             logits = compute_logits_radii(self.protos, x, self.radii).squeeze()
 
             # labels = y.data
@@ -790,54 +796,54 @@ class infinite_mixture_prototype(nn.Module):
 
         else:
 
-            self.nClusters = len(np.unique(y.data.cpu().numpy()))
-            self.nInitialClusters = self.nClusters
-
-            # run data through network
-            # h_train = self._run_forward(x)
-            # create probabilities for points
-            _, idx = np.unique(y.squeeze().data.cpu().numpy(), return_inverse=True)
-            prob_train = one_hot(y, self.nClusters).cuda()
-
-            # make initial radii for labeled clusters
-            bsize = x.size()[0]
-            self.radii = Variable(th.ones(bsize, self.nClusters)).cuda() * th.exp(self.log_sigma_l)
-
-            self.support_labels = th.arange(0, self.nClusters).cuda().long()
-
-            # compute initial prototypes from labeled examples
-            self.protos = self._compute_protos(x, prob_train)
-
-            # estimate lamda
-            # lamda = self.estimate_lambda(self.protos.data, False)
-            lamda = self.estimate_lambda(self.protos, False)
-
-            # tensor_proto = self.protos.data
-            tensor_proto = self.protos
-            # iterate over labeled examples to reassign first
-            for i, ex in enumerate(x[0]):
-                idxs = th.nonzero(y.data[0, i] == self.support_labels)[0]
-                # distances = self._compute_distances(tensor_proto[:, idxs, :], ex.data)
-                distances = self._compute_distances_complex(tensor_proto[:, :, idxs, :], ex.data)
-                if (th.min(distances) > lamda):
-                    # self.nClusters, tensor_proto, self.radii = self._add_cluster(self.nClusters, tensor_proto, self.radii,
-                    #                                                    cluster_type='labeled', ex=ex.data)
-                    self.nClusters, tensor_proto, self.radii = self._add_cluster(self.nClusters, tensor_proto, self.radii,
-                                                                       cluster_type='labeled', ex=ex)
-                    # self.support_labels = th.cat([self.support_labels, y[0, i].data], dim=0)
-                    self.support_labels = th.cat([self.support_labels, y[0, i].reshape([1])], dim=0)
-
-            # perform partial reassignment based on newly created labeled clusters
-            if self.nClusters > self.nInitialClusters:
-                # support_targets = y.data[0, :, None] == self.support_labels
-                support_targets = y[0, :, None] == self.support_labels
-                # prob_train = assign_cluster_radii_limited(Variable(tensor_proto), x, self.radii, support_targets)
-                prob_train = assign_cluster_radii_limited(tensor_proto, x, self.radii, support_targets)
-
-            self.protos = Variable(tensor_proto).cuda()
-            self.protos = self._compute_protos(x, Variable(prob_train.data, requires_grad=False).cuda())
-            self.protos, self.radii, self.support_labels = self.delete_empty_clusters(self.protos, prob_train,
-                                                                            self.radii, self.support_labels)
+            # self.nClusters = len(np.unique(y.data.cpu().numpy()))
+            # self.nInitialClusters = self.nClusters
+            #
+            # # run data through network
+            # # h_train = self._run_forward(x)
+            # # create probabilities for points
+            # _, idx = np.unique(y.squeeze().data.cpu().numpy(), return_inverse=True)
+            # prob_train = one_hot(y, self.nClusters).cuda()
+            #
+            # # make initial radii for labeled clusters
+            # bsize = x.size()[0]
+            # self.radii = Variable(th.ones(bsize, self.nClusters)).cuda() * th.exp(self.log_sigma_l)
+            #
+            # self.support_labels = th.arange(0, self.nClusters).cuda().long()
+            #
+            # # compute initial prototypes from labeled examples
+            # self.protos = self._compute_protos(x, prob_train)
+            #
+            # # estimate lamda
+            # # lamda = self.estimate_lambda(self.protos.data, False)
+            # lamda = self.estimate_lambda(self.protos, False)
+            #
+            # # tensor_proto = self.protos.data
+            # tensor_proto = self.protos
+            # # iterate over labeled examples to reassign first
+            # for i, ex in enumerate(x[0]):
+            #     idxs = th.nonzero(y.data[0, i] == self.support_labels)[0]
+            #     # distances = self._compute_distances(tensor_proto[:, idxs, :], ex.data)
+            #     distances = self._compute_distances_complex(tensor_proto[:, :, idxs, :], ex.data)
+            #     if (th.min(distances) > lamda):
+            #         # self.nClusters, tensor_proto, self.radii = self._add_cluster(self.nClusters, tensor_proto, self.radii,
+            #         #                                                    cluster_type='labeled', ex=ex.data)
+            #         self.nClusters, tensor_proto, self.radii = self._add_cluster(self.nClusters, tensor_proto, self.radii,
+            #                                                            cluster_type='labeled', ex=ex)
+            #         # self.support_labels = th.cat([self.support_labels, y[0, i].data], dim=0)
+            #         self.support_labels = th.cat([self.support_labels, y[0, i].reshape([1])], dim=0)
+            #
+            # # perform partial reassignment based on newly created labeled clusters
+            # if self.nClusters > self.nInitialClusters:
+            #     # support_targets = y.data[0, :, None] == self.support_labels
+            #     support_targets = y[0, :, None] == self.support_labels
+            #     # prob_train = assign_cluster_radii_limited(Variable(tensor_proto), x, self.radii, support_targets)
+            #     prob_train = assign_cluster_radii_limited(tensor_proto, x, self.radii, support_targets)
+            #
+            # self.protos = Variable(tensor_proto).cuda()
+            # self.protos = self._compute_protos(x, Variable(prob_train.data, requires_grad=False).cuda())
+            # self.protos, self.radii, self.support_labels = self.delete_empty_clusters(self.protos, prob_train,
+            #                                                                 self.radii, self.support_labels)
 
             # h_test = self._run_forward(x)
 

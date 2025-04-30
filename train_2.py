@@ -12,7 +12,7 @@ import random
 import coloredlogs
 import logging
 from torch.utils.tensorboard import SummaryWriter
-from IMP_model import InfiniteMixturePrototype
+from IMP_model_2 import InfiniteMixturePrototype
 
 LOG = logging.getLogger('base')
 coloredlogs.install(level='DEBUG', logger=LOG)
@@ -154,17 +154,15 @@ def main(args):
         optimizer.zero_grad()
 
         ret = next(train_iter, None)  # Reset trainloader if empty
-        ##
-        ret_val = next(test_iter, None)
         if ret is None:
             train_iter = iter(train_loader)
             x, y = next(train_iter)
         else:
             x, y = ret
-            x_val, y_val = ret_val
 
         # pred = net(x.cuda())
-        loss, acc = net(x.cuda(), y.cuda(), x_val.cuda(), y_val.cuda(), train_flag=True)
+        net.dp_means_clustering(train_loader)
+        loss, acc = net(x.cuda(), y.cuda())
         # pred, l_proto = net(x.cuda())
         # loss, acc = loss_fn(pred, y.cuda())
         # loss = loss + s * l_proto
