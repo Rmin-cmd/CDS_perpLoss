@@ -150,7 +150,8 @@ def assign_cluster_radii_limited(cluster_centers, data, radii, target_labels):
         prob: [B, N, K] Soft assignment.
     """
     logits = compute_logits_radii(cluster_centers, data, radii) # [B, N, K]
-    class_logits = (torch.min(logits).data-100)*torch.ones(logits.data.size()).cuda()
+    # class_logits = (torch.min(logits).data-100)*torch.ones(logits.data.size()).cuda()
+    class_logits = (torch.min(logits).data-100)*torch.ones(logits.data.size())
     # class_logits[target_labels] = logits.data[target_labels]
     class_logits[target_labels.unsqueeze(0)] = logits.data[target_labels.unsqueeze(0)]
     logits_shape = logits.size()
@@ -228,13 +229,46 @@ def compute_logits_radii(cluster_centers, data, radii, prior_weight=1.):
         log_prob: [B, N, K] logits.
     """
     # cluster_centers = torch.unsqueeze(cluster_centers, 1)   # [B, 1, K, D]
-    cluster_centers = torch.unsqueeze(cluster_centers, 2)   # [B, 1, K, D]
-    # data = torch.unsqueeze(data, 2)  # [B, N, 1, D]
-    data = torch.unsqueeze(data, 3)  # [B, N, 1, D]
+    # cluster_centers = torch.unsqueeze(cluster_centers, 2)   # [B, 1, K, D]
+    # # data = torch.unsqueeze(data, 2)  # [B, N, 1, D]
+    # data = torch.unsqueeze(data, 3)  # [B, N, 1, D]
     dim = data.size()[-1]
     radii = torch.unsqueeze(radii, 1)  # [B, 1, K]
     # neg_dist = -torch.sum((data - cluster_centers)**2, dim=3)   # [B, N, K]
-    neg_dist = -torch.sum((data[..., 0, :, :] - cluster_centers[0, 0])**2 + (data[..., 1, :, :] - cluster_centers[0, 1])**2, dim=3)   # [B, N, K]
+    B, N, C, F = data.shape
+    _, _, K, _ = cluster_centers.shape
+    D = C * F
+
+    # 1) flatten the feature dims
+    #    -> data_flat     : [B, N, D]
+    #    -> centers_flat  : [B, K, D]
+    data_flat = data.reshape(B, N, D)
+    centers_flat = cluster_centers.reshape(B, K, D)
+
+    # 2) compute pairwise dot‐products via batched matmul
+    #    G[b] is [N, K] = data_flat[b] @ centers_flat[b].T
+    G = torch.bmm(data_flat, centers_flat.transpose(1, 2))  # [B, N, K]
+
+    # 3) compute squared‐norms of each row
+    #    data_norms   : [B, N, 1]
+    #    centers_norms: [B, 1, K]
+    data_norms = (data_flat ** 2).sum(dim=2, keepdim=True)  # [B,N,1]
+    centers_norms = (centers_flat ** 2).sum(dim=2, keepdim=True).transpose(1, 2)  # [B,1,K]
+
+    # 4) apply the identity
+    #    dist2[b,n,k] = data_norms[b,n,0] + centers_norms[b,0,k] - 2*G[b,n,k]
+    dist2 = data_norms + centers_norms - 2 * G  # [B, N, K]
+
+    # 5) if you really want “negative distances”:
+    neg_dist = -dist2  # [B, N, K]
+    # cluster_centers = cluster_centers.permute(0, 2, 1, 3)  # now [B, K, C, F]
+    #
+    # # broadcast-subtract & reduce:
+    # neg_dist = -torch.sum(
+    #     (data.unsqueeze(2) - cluster_centers.unsqueeze(1)) ** 2,
+    #     dim=(3, 4)
+    # )  # → [B, N, K]
+    # neg_dist = -torch.sum((data[..., 0, :, :] - cluster_centers[0, 0])**2 + (data[..., 1, :, :] - cluster_centers[0, 1])**2, dim=3)   # [B, N, K]
 
     logits = neg_dist / 2.0 / (radii)
     norm_constant = 0.5*dim*(torch.log(radii) + np.log(2*np.pi))

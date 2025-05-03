@@ -107,9 +107,9 @@ def main(args):
     if args.deterministic:
         torch.use_deterministic_algorithms(True)
 
-    # net = getattr(model, cfg['model']['name'])(
-    #     cifarnet_config=args.cifarnet_config, **cfg['model']['args'])
-    net = InfiniteMixturePrototype(cfg, args)
+    net = getattr(model, cfg['model']['name'])(
+        cifarnet_config=args.cifarnet_config, **cfg['model']['args'])
+    # net = InfiniteMixturePrototype(cfg, args)
 
     net.cuda()
     net.zero_grad()
@@ -155,18 +155,19 @@ def main(args):
 
         ret = next(train_iter, None)  # Reset trainloader if empty
         ##
-        ret_val = next(test_iter, None)
+        # ret_val = next(test_iter, None)
         if ret is None:
             train_iter = iter(train_loader)
             x, y = next(train_iter)
         else:
             x, y = ret
-            x_val, y_val = ret_val
+            # x_val, y_val = ret_val
 
-        # pred = net(x.cuda())
-        loss, acc = net(x.cuda(), y.cuda(), x_val.cuda(), y_val.cuda(), train_flag=True)
+        pred = net(x.cuda())
+        # loss, acc = net(x.cuda(), y.cuda(), x_val.cuda(), y_val.cuda(), train_flag=True)
+        # loss, acc = net(x.cuda(), y.cuda(), x_val.cuda(), y_val.cuda(), train_flag=True)
         # pred, l_proto = net(x.cuda())
-        # loss, acc = loss_fn(pred, y.cuda())
+        loss, acc = loss_fn(pred, y.cuda())
         # loss = loss + s * l_proto
         loss.backward()
         optimizer.step()

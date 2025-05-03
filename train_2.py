@@ -1,3 +1,5 @@
+import math
+
 import dataloader
 import config
 import argparse
@@ -13,6 +15,9 @@ import coloredlogs
 import logging
 from torch.utils.tensorboard import SummaryWriter
 from IMP_model_2 import InfiniteMixturePrototype
+from tqdm import tqdm
+import pandas as pd
+import matplotlib.pyplot as plt
 
 LOG = logging.getLogger('base')
 coloredlogs.install(level='DEBUG', logger=LOG)
@@ -25,7 +30,7 @@ def test_model(test_loader, net, current_iter, tracker, writer, logger, save_thi
     test_losses = []
     test_acc = []
     with torch.no_grad():
-        for batch in tqdm.tqdm(iter(test_loader), dynamic_ncols=True):
+        for batch in tqdm(iter(test_loader), dynamic_ncols=True):
             x, y = batch
             # pred, l_proto = net(x.cuda())
             # loss, acc = loss_fn(pred, y.cuda())
@@ -36,7 +41,7 @@ def test_model(test_loader, net, current_iter, tracker, writer, logger, save_thi
             test_acc.append(acc.item())
     mean_test_acc = np.sum(test_acc)/len(test_loader.dataset)
     # mean_test_acc = np.sum(test_acc)/len(test_acc)
-    mean_test_loss = np.sum(test_losses)/len(test_loader.dataset)
+    mean_test_loss = np.sum(test_losses)/len(test_loader)
     # mean_test_loss = np.sum(test_losses)/len(test_losses)
 
     writer.add_scalar('Test Loss', mean_test_loss, current_iter)
@@ -57,7 +62,7 @@ def val_model(val_loader, net, current_iter, tracker, writer, logger):
     val_acc = []
 
     with torch.no_grad():
-        for idx, batch in tqdm.tqdm(enumerate(val_loader), dynamic_ncols=True):
+        for idx, batch in tqdm(enumerate(val_loader), dynamic_ncols=True):
             x, y = batch
             # pred, l_proto = net(x.cuda())
             # loss, acc = loss_fn(pred, y.cuda())
@@ -70,7 +75,7 @@ def val_model(val_loader, net, current_iter, tracker, writer, logger):
     mean_val_acc = np.sum(val_acc)/len(val_loader.dataset)
     # mean_val_acc = np.sum(val_acc)/len(val_acc)
     # mean_val_loss = np.sum(val_losses)/len(val_losses)
-    mean_val_loss = np.sum(val_losses)/len(val_loader.dataset)
+    mean_val_loss = np.sum(val_losses)/len(val_loader)
     writer.add_scalar('Validation Loss', mean_val_loss, current_iter)
     writer.add_scalar('Validation Acc', mean_val_acc, current_iter)
     logger.info("Finished Validation! Mean Loss: {}, Acc: {}".format(
@@ -131,59 +136,126 @@ def main(args):
     tracker = Model_Tracker(ckpt_dir, LOG)
     save_this_iter = False
 
-    train_iter = iter(train_loader)
-    LOG.info("train_iter_size " + str(len(train_iter)))
-    LOG.info("testloader " + str(test_loader))
+    num_epochs = math.ceil(args.num_iters / len(train_loader))
+    current_iter = 0
 
-    for current_iter in tqdm.trange(args.num_iters+1, dynamic_ncols=True):
-        if ((current_iter % args.val_every) == 0) and current_iter > 0:
-            LOG.info(f"Last Training Batch Acc: {acc.item()}")
-            # if val_loader:
-            #     save_this_iter = val_model(
-            #         val_loader, net, current_iter, tracker, writer, LOG)
+    epoch_grads = {}
+    for epoch in tqdm(range(num_epochs)):
+        # if ((current_iter % args.val_every) == 0) and current_iter > 0:
+        if epoch % 5 == 0 and epoch > 0:
+            # LOG.info(f"Last Training Batch Acc: {acc.item()}")
+            if val_loader:
+                save_this_iter = val_model(
+                    val_loader, net, current_iter, tracker, writer, LOG)
             if save_this_iter:
                 test_model(test_loader, net, current_iter,
                            tracker, writer, LOG, save_this_iter)
                 save_this_iter = False
 
             net.zero_grad()
-            net.train()
 
-        optimizer.zero_grad()
-
-        ret = next(train_iter, None)  # Reset trainloader if empty
-        if ret is None:
-            train_iter = iter(train_loader)
-            x, y = next(train_iter)
-        else:
-            x, y = ret
-
-        # pred = net(x.cuda())
+        net.train()
+        # 1. Re-cluster once per epoch
         net.dp_means_clustering(train_loader)
-        loss, acc = net(x.cuda(), y.cuda())
-        # pred, l_proto = net(x.cuda())
-        # loss, acc = loss_fn(pred, y.cuda())
-        # loss = loss + s * l_proto
-        loss.backward()
-        optimizer.step()
+        for i, (x, y) in enumerate(train_loader):
+            x, y = x.cuda(), y.cuda()
 
-        if (current_iter % args.log_every) == 0:
-            writer.add_scalar('Train Loss', loss.item(), current_iter)
-            writer.add_scalar('Train Acc', acc.item(), current_iter)
+            optimizer.zero_grad()
+            loss, acc = net(x, y, train_flag=True)
+            loss.backward()
+            optimizer.step()
+        #     for name, param in net.named_parameters():
+        #
+        #         if param.grad is not None:
+        #             if i == 0:
+        #                 if epoch == 0:
+        #                     epoch_grads[name] = {epoch: [param.grad.mean().tolist()]}
+        #                 else:
+        #                     epoch_grads[name].update({epoch:[param.grad.mean().tolist()]})
+        #             else:
+        #                 epoch_grads[name][epoch].append(param.grad.mean().tolist())
+        #
+        #     # gradient‐norm clipping
+        #     torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=1.0)
+        #
+        #     optimizer.step()
+        #
+        # for key in epoch_grads.keys():
+        #     df = pd.DataFrame(epoch_grads[key])
+        #     df.boxplot()
+        #     plt.title(key)
+        #     plt.xlabel('epochs')
+        #     plt.ylabel('gradients')
+        #     plt.show()
 
-        if (save_on is not None) and (current_iter in save_on):
-            os.makedirs(f'{ckpt_dir}/saves/', exist_ok=True)
-            torch.save(
-                net, f"{ckpt_dir}/saves/{str(current_iter).zfill(6)}.pth")
+        if current_iter % args.log_every == 0:
+            writer.add_scalar("Train/Loss", loss.item(), current_iter)
+            writer.add_scalar("Train/Acc", acc.item(), current_iter)
 
-    current_iter += 1
-    LOG.info("Done Training!")
+        current_iter += len(train_loader)
+        if current_iter > args.num_iters:
+            break
 
-    if val_loader:
-        save_this_iter = val_model(
-            val_loader, net, current_iter, tracker, writer, LOG)
+        # Optional: run validation
+        # if val_loader and (epoch + 1) % args.val_every_epochs == 0:
+        #     save_this_iter = val_model(val_loader, net, current_iter, ...)
 
-    LOG.info("Done. Exiting")
+    # train_iter = iter(train_loader)
+    # LOG.info("train_iter_size " + str(len(train_iter)))
+    # LOG.info("testloader " + str(test_loader))
+    #
+    # for current_iter in tqdm.trange(args.num_iters+1, dynamic_ncols=True):
+    #     if ((current_iter % args.val_every) == 0) and current_iter > 0:
+    #         LOG.info(f"Last Training Batch Acc: {acc.item()}")
+    #         # if val_loader:
+    #         #     save_this_iter = val_model(
+    #         #         val_loader, net, current_iter, tracker, writer, LOG)
+    #         if save_this_iter:
+    #             test_model(test_loader, net, current_iter,
+    #                        tracker, writer, LOG, save_this_iter)
+    #             save_this_iter = False
+    #
+    #         net.zero_grad()
+    #         net.train()
+    #
+    #     optimizer.zero_grad()
+    #
+    #     ret = next(train_iter, None)  # Reset trainloader if empty
+    #     if ret is None:
+    #         train_iter = iter(train_loader)
+    #         x, y = next(train_iter)
+    #     else:
+    #         x, y = ret
+    #
+    #     # pred = net(x.cuda())
+    #     if current_iter % len(train_loader) == 0:
+    #         net.dp_means_clustering(train_loader)
+    #     loss, acc = net(x.cuda(), y.cuda())
+    #     # pred, l_proto = net(x.cuda())
+    #     # loss, acc = loss_fn(pred, y.cuda())
+    #     # loss = loss + s * l_proto
+    #     loss.backward()
+    #     optimizer.step()
+    #
+    #     torch.nn.utils.clip_grad_value_(net.parameters(), clip_value=0.1)
+    #
+    #     if (current_iter % args.log_every) == 0:
+    #         writer.add_scalar('Train Loss', loss.item(), current_iter)
+    #         writer.add_scalar('Train Acc', acc.item(), current_iter)
+    #
+    #     if (save_on is not None) and (current_iter in save_on):
+    #         os.makedirs(f'{ckpt_dir}/saves/', exist_ok=True)
+    #         torch.save(
+    #             net, f"{ckpt_dir}/saves/{str(current_iter).zfill(6)}.pth")
+    #
+    # current_iter += 1
+    # LOG.info("Done Training!")
+    #
+    # if val_loader:
+    #     save_this_iter = val_model(
+    #         val_loader, net, current_iter, tracker, writer, LOG)
+    #
+    # LOG.info("Done. Exiting")
 
 
 if __name__ == "__main__":
@@ -204,7 +276,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--wd", type=float, default=0, help="Weight Decay")
 
-    parser.add_argument("--num_iters", type=int, default=500000,
+    parser.add_argument("--num_iters", type=int, default=50000,
                         help="Number of batches to train for")
 
     parser.add_argument("--log_every", type=int, default=50,
