@@ -202,7 +202,7 @@ class CDS_E(nn.Module):
         # df_conv = conv(prototype_size, prototype_size, kern_size=1, groups=16,
         #                new_init=True, use_groups_init=True)
 
-        # self.dist_feat = layers.DistFeatures(prototype_size, outsize)
+        self.dist_feat = layers.DistFeatures(prototype_size, outsize)
 
         # self.imp = layers.infinite_mixture_prototype()
 
@@ -249,13 +249,15 @@ class CDS_E(nn.Module):
         x = self.bn(x)
         # x_val = self.bn(x_val)
 
-        # y = torch.sum(x, dim=2, keepdim=True)/np.sqrt(x.shape[2]*2)
+        y = torch.sum(x, dim=2, keepdim=True)/np.sqrt(x.shape[2]*2)
         # x, l = self.dist_feat(x[..., 0, 0], y)
+        x = self.dist_feat(x[..., 0, 0], y)
 
         # loss, acc = self.imp(x[None, ..., 0, 0], y.unsqueeze(0), x_val[None, ..., 0, 0], y_val.unsqueeze(0), train_flag)
 
         # return x, l
-        return x[None, ..., 0, 0]
+        return x
+        # return x[None, ..., 0, 0]
 
 
 class CDS_MSTAR(nn.Module):

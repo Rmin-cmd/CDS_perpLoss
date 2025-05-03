@@ -7,12 +7,13 @@ dataset:
     lab: false
     dset_type: cifar10
     remove_train: 0
-    sliding: false
+    sliding: true
 
 model:
-  name: CDS_E # model name: Which model to load from models.py
+#  name: CDS_E # model name: Which model to load from models.py
+  name: small_cnn # model name: Which model to load from models.py
   args:
-    dset_type: rgb
+    dset_type: sliding
     outsize: 10
     convex_constraint: false
     nonlin: crelu
@@ -30,4 +31,5 @@ model:
     no_bias: false
     aproj: 1.0
     phase_scale: 1.0
-    in_size: null
+#    in_size: null
+    in_size: 1

@@ -494,8 +494,8 @@ class DistFeatures(nn.Module):
         self.in_channels = in_channels
         self.num_prototypes = num_prototypes
 
-        # prototypes = th.rand(2, in_channels, num_prototypes)
-        prototypes = th.rand(2, 10, in_channels, num_prototypes)
+        prototypes = th.rand(2, in_channels, num_prototypes)
+        # prototypes = th.rand(2, 10, in_channels, num_prototypes)
         self.prototypes = nn.Parameter(data=prototypes, requires_grad=True)
         self.temp = nn.Parameter(data=th.tensor(1.0), requires_grad=True)
         # self.log_sigma = nn.Parameter(data=th.zeros([1, num_prototypes]))
@@ -555,10 +555,10 @@ class DistFeatures(nn.Module):
             y = y[..., 0, 0]
             a, b = self.prototypes[None, 0], self.prototypes[None, 1]
             c, d = y[:, 0, ..., None], y[:, 1, ..., None]
-            # real = a*c - b*d
-            # imag = b*c + a*d
-            real = a*c.unsqueeze(1) - b*d.unsqueeze(1)
-            imag = b*c.unsqueeze(1) + a*d.unsqueeze(1)
+            real = a*c - b*d
+            imag = b*c + a*d
+            # real = a*c.unsqueeze(1) - b*d.unsqueeze(1)
+            # imag = b*c.unsqueeze(1) + a*d.unsqueeze(1)
         else:
             prototypes = self.prototypes
             real, imag = prototypes[None, 0, :, :], prototypes[None, 1, :, :]
@@ -566,15 +566,17 @@ class DistFeatures(nn.Module):
 
         # dist = perpendicular_loss(real=real, imag=imag, a=a.squeeze(), b=b.squeeze())
 
-        # dist_sq = (real-a)**2 + (imag-b)**2
-        dist_sq = (real-a.unsqueeze(1))**2 + (imag-b.unsqueeze(1))**2
-        # dist = th.sqrt(dist_sq.mean(dim=1))
-        dist = th.sqrt(dist_sq.mean(dim=2))
+        dist_sq = (real-a)**2 + (imag-b)**2
+        # dist_sq = (real-a.unsqueeze(1))**2 + (imag-b.unsqueeze(1))**2
+        dist = th.sqrt(dist_sq.mean(dim=1))
+        # dist = th.sqrt(dist_sq.mean(dim=2))
 
         # add gmm layer
         # l_proto = self.gmm(dist_sq, real, imag, a, b)
 
-        return -dist.mean(dim=1)*self.temp
+        return -dist.mean(dim=1) * self.temp
+
+        # return -dist.mean(dim=1)*self.temp
         # return -dist.mean(dim=1)*self.temp, l_proto
 
 
