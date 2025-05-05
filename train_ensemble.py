@@ -86,7 +86,7 @@ def test_model(test_loader, nets, current_iter, tracker, writer, logger, save_th
                 logit_dict[i].extend(pred_y.tolist())
                 # test_losses_real.append(loss.item())
                 # test_acc.append(acc.item())
-    mod_logits = pd.DataFrame(logit_dict).mode(axis=1)
+    mod_logits = pd.DataFrame(logit_dict).mode(axis=1)[0].to_list()
     test_acc = sum(p == t for p, t in zip(mod_logits, label_list)) / len(label_list)
     # mean_test_acc = np.mean(test_acc)
     # mean_test_loss = np.mean(test_losses)
