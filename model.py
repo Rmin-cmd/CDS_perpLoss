@@ -250,13 +250,13 @@ class CDS_E(nn.Module):
         # x_val = self.bn(x_val)
 
         y = torch.sum(x, dim=2, keepdim=True)/np.sqrt(x.shape[2]*2)
-        # x, l = self.dist_feat(x[..., 0, 0], y)
-        x = self.dist_feat(x[..., 0, 0], y)
+        x, l = self.dist_feat(x[..., 0, 0], y)
+        # x = self.dist_feat(x[..., 0, 0], y)
 
         # loss, acc = self.imp(x[None, ..., 0, 0], y.unsqueeze(0), x_val[None, ..., 0, 0], y_val.unsqueeze(0), train_flag)
 
-        # return x, l
-        return x
+        return x, l
+        # return x
         # return x[None, ..., 0, 0]
 
 

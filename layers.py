@@ -543,7 +543,13 @@ class DistFeatures(nn.Module):
 
         return loss_proto
 
+    def soft_mse(self, distance_sq, pro_real, pro_imag, pred_real, pred_imag):
 
+        D2 = distance_sq.sum(dim=2).squeeze()
+
+        r = th.softmax(-D2, dim=-1)  # [B,C]
+
+        return (r * D2).sum(dim=1).mean()
 
     def forward(self, x, y=None):
         """
@@ -573,8 +579,9 @@ class DistFeatures(nn.Module):
 
         # add gmm layer
         # l_proto = self.gmm(dist_sq, real, imag, a, b)
+        l_proto = self.soft_mse(dist_sq, real, imag, a, b)
 
-        return -dist.mean(dim=1) * self.temp
+        return -dist.mean(dim=1) * self.temp, l_proto
 
         # return -dist.mean(dim=1)*self.temp
         # return -dist.mean(dim=1)*self.temp, l_proto
