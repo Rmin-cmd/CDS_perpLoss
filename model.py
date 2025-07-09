@@ -176,7 +176,8 @@ class CDS_E(nn.Module):
         super(CDS_E, self).__init__()
 
         conv = layers.ComplexConv
-        inp_size = 2 if (dset_type == 'lab') else 3
+        inp_size = 2 if ((dset_type == 'lab') or (
+            dset_type == 'sliding')) else 3
         self.wfm1 = conv(inp_size, 16, kern_size=3, stride=(
             2, 2), reflect=1, new_init=True, use_groups_init=True)
         self.wfm2 = conv(16, 32, kern_size=3, stride=(
