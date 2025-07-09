@@ -163,12 +163,14 @@ def main(args):
             x, y = ret
             # x_val, y_val = ret_val
 
-        pred = net(x.cuda())
+        # s = args.lambda_max * min((current_iter / 1000) / args.warmup_epochs, 1.0)
+
+        # pre = net(x.cuda())
         # loss, acc = net(x.cuda(), y.cuda(), x_val.cuda(), y_val.cuda(), train_flag=True)
         # loss, acc = net(x.cuda(), y.cuda(), x_val.cuda(), y_val.cuda(), train_flag=True)
-        # pred, l_proto = net(x.cuda())
+        pred, l_proto = net(x.cuda())
         loss, acc = loss_fn(pred, y.cuda())
-        # loss = loss + s * l_proto
+        loss = loss + 1e-4 * l_proto
         loss.backward()
         optimizer.step()
 
