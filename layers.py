@@ -581,7 +581,8 @@ class DistFeatures(nn.Module):
         # l_proto = self.gmm(dist_sq, real, imag, a, b)
         l_proto = self.soft_mse(dist_sq, real, imag, a, b)
 
-        return -dist.mean(dim=1) * self.temp, l_proto
+        # return -dist.mean(dim=1) * self.temp, l_proto
+        return -dist * self.temp, l_proto
 
         # return -dist.mean(dim=1)*self.temp
         # return -dist.mean(dim=1)*self.temp, l_proto

@@ -73,7 +73,7 @@ xent = torch.nn.CrossEntropyLoss()
 
 
 def loss_fn(x, y):
-    return xent(x, y.to(torch.float)), (torch.argmax(x, dim=-1) == y).type(torch.cuda.FloatTensor).sum()
+    return xent(x, y), (torch.argmax(x, dim=-1) == y).type(torch.cuda.FloatTensor).sum()
 
 def loss_fn_2(x, y):
     return xent(x, y), torch.argmax(x, dim=-1)
