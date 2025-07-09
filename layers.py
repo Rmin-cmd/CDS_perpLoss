@@ -963,6 +963,7 @@ class Two_Channel_Nonlinearity(th.autograd.Function):
         grad_input = grad_output.clone()
 
         # grad_input = grad_input*(1-phase_mask)
+        # Apply the phase mask change in the updated code in github
         grad_input = grad_input*(phase_mask)
 
         return grad_input
