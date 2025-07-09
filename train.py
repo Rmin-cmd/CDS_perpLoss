@@ -27,11 +27,11 @@ def test_model(test_loader, net, current_iter, tracker, writer, logger, save_thi
     with torch.no_grad():
         for batch in tqdm.tqdm(iter(test_loader), dynamic_ncols=True):
             x, y = batch
-            # pred, l_proto = net(x.cuda())
-            # loss, acc = loss_fn(pred, y.cuda())
-            # loss = loss + s * l_proto
+            pred, l_proto = net(x.cuda())
+            loss, acc = loss_fn(pred, y.cuda())
+            loss = loss + s * l_proto
             # loss, acc = loss_fn(net(x.cuda()), y.cuda())
-            loss, acc = net(x.cuda(), y=y.cuda(), train_flag=False)
+            # loss, acc = net(x.cuda(), y=y.cuda(), train_flag=False)
             test_losses.append(loss.item())
             test_acc.append(acc.item())
     mean_test_acc = np.sum(test_acc)/len(test_loader.dataset)
@@ -59,10 +59,10 @@ def val_model(val_loader, net, current_iter, tracker, writer, logger):
     with torch.no_grad():
         for idx, batch in tqdm.tqdm(enumerate(val_loader), dynamic_ncols=True):
             x, y = batch
-            # pred, l_proto = net(x.cuda())
-            # loss, acc = loss_fn(pred, y.cuda())
-            # loss = loss + s * l_proto
-            loss, acc = net(x.cuda(), y.cuda(), train_flag=False)
+            pred, l_proto = net(x.cuda())
+            loss, acc = loss_fn(pred, y.cuda())
+            loss = loss + s * l_proto
+            # loss, acc = net(x.cuda(), y.cuda(), train_flag=False)
             # loss, acc = loss_fn(net(x.cuda()), y.cuda())
             val_losses.append(loss.item())
             val_acc.append(acc.item())
@@ -140,9 +140,9 @@ def main(args):
     for current_iter in tqdm.trange(args.num_iters+1, dynamic_ncols=True):
         if ((current_iter % args.val_every) == 0) and current_iter > 0:
             LOG.info(f"Last Training Batch Acc: {acc.item()}")
-            # if val_loader:
-            #     save_this_iter = val_model(
-            #         val_loader, net, current_iter, tracker, writer, LOG)
+            if val_loader:
+                save_this_iter = val_model(
+                    val_loader, net, current_iter, tracker, writer, LOG)
             if save_this_iter:
                 test_model(test_loader, net, current_iter,
                            tracker, writer, LOG, save_this_iter)
