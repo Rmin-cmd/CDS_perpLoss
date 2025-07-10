@@ -163,14 +163,14 @@ def main(args):
             x, y = ret
             # x_val, y_val = ret_val
 
-        # s = args.lambda_max * min((current_iter / 1000) / args.warmup_epochs, 1.0)
+        s = args.lambda_max * min(current_iter / args.val_every, 1.0)
 
         # pre = net(x.cuda())
         # loss, acc = net(x.cuda(), y.cuda(), x_val.cuda(), y_val.cuda(), train_flag=True)
         # loss, acc = net(x.cuda(), y.cuda(), x_val.cuda(), y_val.cuda(), train_flag=True)
         pred, l_proto = net(x.cuda())
         loss, acc = loss_fn(pred, y.cuda())
-        loss = loss + 1e-4 * l_proto
+        loss = loss + s * l_proto
         loss.backward()
         optimizer.step()
 
@@ -216,6 +216,8 @@ if __name__ == "__main__":
 
     parser.add_argument("--log_every", type=int, default=50,
                         help="Log losses every N iterations")
+
+    parser.add_argument("--lambda_max", default=1e-4, type=float, help="maximum lambda for the loss")
 
     parser.add_argument("--mag_only", default=False, action="store_true",
                         help="Only use magnitude. Works for MSTAR only")
